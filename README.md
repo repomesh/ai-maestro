@@ -283,3 +283,58 @@ MIT — see [LICENSE](./LICENSE). Free for any purpose, including commercial.
 [Star us on GitHub](https://github.com/23blocks-OS/ai-maestro)
 
 </div>
+
+## FAQ
+
+### What is AI Maestro?
+
+**AI Maestro** is the operating system for AI-first organizations — orchestrate any AI agent with **persistent memory**, **agent-to-agent messaging**, and **multi-machine support**. Built from real experience running 80+ agents across multiple computers.
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **One Dashboard** | See and manage all AI agents in one place with smart naming and auto-coloring |
+| **Multi-Machine** | Peer mesh network — every machine is equal, no central server required |
+| **Agent Messaging (AMP)** | Agents communicate directly via email-like messaging protocol |
+| **Persistent Memory** | Three layers: Memory, Code Graph, Documentation — agents get smarter over time |
+| **Work Coordination** | Teams, Kanban boards, drag-and-drop task management |
+| **Any Agent** | Works with Claude Code, Codex, Aider, Cursor, OpenClaw, Hermes, Droid, or any terminal-based agent |
+| **Multi-Deployment** | tmux (local), Docker, AWS EC2, AWS ECS Fargate |
+| **Gateways** | Slack, Discord, Email, WhatsApp integrations with smart routing |
+
+### How to Get Started
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/23blocks-OS/ai-maestro/main/scripts/remote-install.sh | sh
+```
+
+Dashboard opens at `http://localhost:23000`
+
+**Time:** 5-10 minutes · **Requires:** Node.js 18+, tmux
+
+### Agent Deployment Modes
+
+| Mode | Best For |
+|------|----------|
+| **tmux** | Local development, zero setup |
+| **Docker** | Isolation, reproducibility, multi-project |
+| **AWS EC2** | Always-on agents, SSH access, persistent workloads |
+| **AWS ECS Fargate** | Burst scaling, zero maintenance, pay-per-use |
+
+### What is AMP (Agent Messaging Protocol)?
+
+AMP gives your agents email-like communication. Priority levels, message types, cryptographic signatures, and push notifications. Tell your agent *"send a message to backend about the deployment"* — it just works.
+
+### Help Resources
+
+| Resource | Link |
+|----------|------|
+| **Quick Start Guide** | ./docs/QUICKSTART.md |
+| **Windows Installation** | ./docs/WINDOWS-INSTALLATION.md |
+| **Contributing** | ./CONTRIBUTING.md |
+| **AMP Protocol** | https://agentmessaging.org |
+
+### License
+
+MIT License - Open source and free to use.
