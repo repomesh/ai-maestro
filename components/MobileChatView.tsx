@@ -543,8 +543,9 @@ export default function MobileChatView({ agentId, agentName, sessionName: sessio
   // Determine status
   const isPermission = hookState?.status === 'permission_request'
   const isWaiting = hookState?.status === 'waiting_for_input'
-  const isWorking = pendingMessages.length > 0 || (messages.length > 0 && !isWaiting && !isPermission &&
-    (messages[messages.length - 1]?.type === 'user' || messages[messages.length - 1]?.type === 'human'))
+  const isSendingMsg = sending
+  const isWorking = !sending && (pendingMessages.length > 0 || (messages.length > 0 && !isWaiting && !isPermission &&
+    (messages[messages.length - 1]?.type === 'user' || messages[messages.length - 1]?.type === 'human')))
 
   return (
     <div className="flex flex-col h-full bg-gray-900">
@@ -883,16 +884,17 @@ export default function MobileChatView({ agentId, agentName, sessionName: sessio
           <div className="px-3 py-1.5 flex items-center gap-2">
             <div
               className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                isWaiting ? 'bg-green-500' : isWorking ? 'bg-amber-500 animate-pulse' : 'bg-gray-500'
+                isWaiting ? 'bg-green-500' : isSendingMsg ? 'bg-blue-400 animate-pulse' : isWorking ? 'bg-amber-500 animate-pulse' : 'bg-gray-500'
               }`}
             />
             <span className="text-xs text-gray-400">
               {isWaiting ? 'Ready for input'
+               : isSendingMsg ? 'Sending...'
                : isWorking
                  ? (liveActivity ? `${liveActivity.label}${liveActivity.detail ? ` · ${liveActivity.detail}` : ''}` : 'Working...')
                  : 'Idle'}
             </span>
-            {isWorking && <Loader2 className="w-3 h-3 text-amber-500 animate-spin" />}
+            {(isSendingMsg || isWorking) && <Loader2 className={`w-3 h-3 animate-spin ${isSendingMsg ? 'text-blue-400' : 'text-amber-500'}`} />}
           </div>
         )}
       </div>

@@ -620,7 +620,8 @@ export default function ChatView({ agent, isActive = false }: ChatViewProps) {
   const activityState = useMemo(() => {
     if (hookState?.status === 'permission_request') return 'permission' as const
     if (hookState?.status === 'waiting_for_input') return 'waiting' as const
-    if (pendingMessages.length > 0 || isSending) return 'thinking' as const
+    if (isSending) return 'sending' as const
+    if (pendingMessages.length > 0) return 'thinking' as const
     if (messages.length > 0) {
       for (let i = messages.length - 1; i >= 0; i--) {
         const t = messages[i].type
@@ -638,6 +639,7 @@ export default function ChatView({ agent, isActive = false }: ChatViewProps) {
         <div className="flex items-center gap-3">
           <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
             !isOnline ? 'bg-red-500'
+            : activityState === 'sending' ? 'bg-blue-400 animate-pulse'
             : activityState === 'thinking' ? 'bg-amber-400 animate-pulse'
             : activityState === 'permission' ? 'bg-red-400 animate-pulse'
             : activityState === 'waiting' ? 'bg-green-400'
@@ -646,6 +648,7 @@ export default function ChatView({ agent, isActive = false }: ChatViewProps) {
           <div>
             <h3 className="text-sm font-medium text-gray-200">
               {!isOnline ? 'Offline'
+              : activityState === 'sending' ? 'Sending...'
               : activityState === 'thinking'
                 ? (liveActivity
                   ? `${liveActivity.label}${liveActivity.detail ? ` · ${liveActivity.detail}` : ''}...`
