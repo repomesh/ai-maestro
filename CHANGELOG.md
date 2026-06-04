@@ -3,6 +3,14 @@
 All notable changes to AI Maestro are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.35.50] - 2026-06-04
+
+### Fixed
+- **Terminal: content duplication on WebSocket reconnect** — When a WebSocket connection dropped (heartbeat timeout, network blip), the client reconnected and the server sent 5000 lines of tmux history — but the terminal buffer was never cleared first. History was appended on top of existing content, causing visible duplication. For high-output agents (e.g., Claude Opus "thinking" animation producing dense ANSI), this created a devastating re-render every 30-40 seconds. Now clears the terminal buffer on reconnect before fresh history arrives.
+- **Chat: sending state distinguished from thinking** — Chat activity indicator now shows "Sending..." (blue pulse) while the message is being delivered to the agent, separate from "Thinking..." (amber pulse) when the agent is processing. Applies to both desktop ChatView and MobileChatView.
+- **Chat: paste-probe message delivery** — `sendChatMessage()` now uses tmux buffer paste (load-buffer + paste-buffer) instead of send-keys -l, with a poll-based verification loop that confirms the text appeared in the pane before sending Enter. Prevents lost messages when tmux input handling is slow. Also blocks sending when agent is at a permission prompt.
+- **Tab validation on load** — Active tab restored from localStorage is now validated against the list of valid tabs. Previously, a stale value (e.g., removed "terminal2") would silently fail to render any tab content.
+
 ## [0.35.44] - 2026-05-29
 
 ### Added

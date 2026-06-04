@@ -107,6 +107,7 @@ export default function TerminalView({ session, isVisible: _isVisible = true, hi
 
   // Store terminal in a ref so the WebSocket callback can access the current value
   const terminalInstanceRef = useRef<typeof terminal>(null)
+  const hasConnectedOnceRef = useRef(false)
 
   useEffect(() => {
     terminalInstanceRef.current = terminal
@@ -206,6 +207,16 @@ export default function TerminalView({ session, isVisible: _isVisible = true, hi
       // Reset history gate — server will send history then history-complete
       historyCompleteRef.current = false
       lastSentSizeRef.current = null
+      // On reconnect, clear the terminal before fresh history arrives.
+      // Without this, the 5000-line history dump from the server is appended
+      // to existing content, causing visible duplication every reconnect cycle.
+      if (hasConnectedOnceRef.current) {
+        const term = terminalInstanceRef.current
+        if (term) {
+          term.clear()
+        }
+      }
+      hasConnectedOnceRef.current = true
     },
     onClose: () => {
       // Notify parent of connection status change

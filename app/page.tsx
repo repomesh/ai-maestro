@@ -119,7 +119,9 @@ export default function DashboardPage() {
   }
   const [activeTab, setActiveTab] = useState<'terminal' | 'chat' | 'messages' | 'worktree' | 'graph' | 'memory' | 'docs' | 'canvas' | 'search' | 'export' | 'playback'>(() => {
     if (typeof window === 'undefined') return 'chat'
-    return (localStorage.getItem('aimaestro-active-tab') as any) || 'chat'
+    const saved = localStorage.getItem('aimaestro-active-tab')
+    const validTabs = ['terminal', 'chat', 'messages', 'worktree', 'graph', 'memory', 'docs', 'canvas', 'search', 'export', 'playback']
+    return (saved && validTabs.includes(saved) ? saved : 'chat') as any
   })
   // Persist tab choice in localStorage
   useEffect(() => {
@@ -962,7 +964,6 @@ export default function DashboardPage() {
                         </ErrorBoundary>
                       )
                     ) : !isActive ? (
-                      // For inactive agents, don't mount heavy components - just show placeholder
                       <div className="flex-1 flex items-center justify-center text-gray-500">
                         <Loader2 className="w-6 h-6 animate-spin" />
                       </div>

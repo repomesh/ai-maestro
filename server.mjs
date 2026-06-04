@@ -670,6 +670,103 @@ function getAgentIdForSession(sessionName) {
 }
 
 /**
+ * Send a chat message to a tmux session with verification.
+ *
+ * 1. Check if the agent is at a permission prompt — refuse if so.
+ * 2. Capture pane baseline.
+ * 3. Write text to a temp file, load into tmux buffer, paste into pane.
+ * 4. Poll until the tail of the text appears in the pane (paste-probe).
+ * 5. Send Enter only after verification (or after timeout).
+ *
+ * Returns { ok, error? }
+ */
+const PASTE_PROBE_TIMEOUT_MS = 1200
+const PASTE_PROBE_INTERVAL_MS = 50
+const PASTE_PROBE_MIN_CHARS = 8
+
+function capturePaneCompact(sessionName, lines = 100) {
+  try {
+    const res = execSync(
+      `tmux capture-pane -p -J -t "${sessionName}" -S -${lines}`,
+      { timeout: 2000, encoding: 'utf-8' }
+    )
+    return res.replace(/\s+/g, ' ').trim()
+  } catch { return '' }
+}
+
+function pasteTailProbe(text) {
+  const compacted = text.replace(/\s+/g, ' ').trim()
+  if (compacted.length <= PASTE_PROBE_MIN_CHARS) return compacted
+  return compacted.slice(-Math.min(80, compacted.length))
+}
+
+function isAgentAtPermissionPrompt(sessionName) {
+  try {
+    const raw = execSync(
+      `tmux capture-pane -p -t "${sessionName}" -S -15`,
+      { timeout: 2000, encoding: 'utf-8' }
+    )
+    const lines = raw.split('\n').map(l => l.trim()).filter(Boolean)
+    const lastLines = lines.slice(-12).join('\n').toLowerCase()
+    return lastLines.includes('esc to cancel') &&
+      (lastLines.includes('do you want to proceed') ||
+       lastLines.includes('yes, and don\'t ask') ||
+       /❯\s*1\.\s*yes/i.test(lastLines))
+  } catch { return false }
+}
+
+async function sendChatMessage(sessionName, message) {
+  // 1. Check hookState first (fast path)
+  const sessionState = terminalSessions.get(sessionName)
+  if (sessionState?._lastPermission?.status === 'permission_request') {
+    return { ok: false, error: 'Agent is waiting for permission approval. Approve or deny the pending action first.' }
+  }
+  // 2. Check pane for permission prompt (catches cases hookState missed)
+  if (isAgentAtPermissionPrompt(sessionName)) {
+    return { ok: false, error: 'Agent is waiting for permission approval. Approve or deny the pending action first.' }
+  }
+
+  // 3. Capture baseline for paste-probe verification
+  const baseline = capturePaneCompact(sessionName)
+
+  // 4. Write text to temp file, load into tmux buffer, paste into pane
+  const tmpFile = path.join(os.tmpdir(), `aimaestro-send-${Date.now()}.txt`)
+  const bufferName = `aimaestro-${Date.now()}`
+  try {
+    fs.writeFileSync(tmpFile, message, 'utf-8')
+    execSync(`tmux load-buffer -b "${bufferName}" "${tmpFile}"`, { timeout: 3000 })
+    execSync(`tmux paste-buffer -d -r -b "${bufferName}" -t "${sessionName}"`, { timeout: 3000 })
+  } catch (err) {
+    try { fs.unlinkSync(tmpFile) } catch {}
+    try { execSync(`tmux delete-buffer -b "${bufferName}"`, { timeout: 1000 }) } catch {}
+    return { ok: false, error: 'Failed to paste text: ' + err.message }
+  }
+  try { fs.unlinkSync(tmpFile) } catch {}
+
+  // 5. Paste-probe: poll until text tail appears in pane
+  const probe = pasteTailProbe(message)
+  if (probe) {
+    const baselineCount = (baseline.match(new RegExp(probe.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length
+    const deadline = Date.now() + PASTE_PROBE_TIMEOUT_MS
+    while (Date.now() < deadline) {
+      const captured = capturePaneCompact(sessionName)
+      const currentCount = (captured.match(new RegExp(probe.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length
+      if (currentCount > baselineCount) break
+      await new Promise(r => setTimeout(r, PASTE_PROBE_INTERVAL_MS))
+    }
+  }
+
+  // 6. Send Enter (C-m is more reliable than Enter through tmux)
+  try {
+    execSync(`tmux send-keys -t "${sessionName}" C-m`, { timeout: 3000 })
+  } catch (err) {
+    return { ok: false, error: 'Text pasted but Enter failed: ' + err.message }
+  }
+
+  return { ok: true }
+}
+
+/**
  * Extract structured activity signals from raw PTY output.
  * Returns { label, detail? } or null if no recognizable signal.
  */
@@ -1556,26 +1653,17 @@ async function startServer(handleRequest) {
             startJsonlWatcher(sessionName, sessionState, parsed.agentId)
           } else if (parsed.type === 'chat:send') {
             if (parsed.message) {
-              // Always use tmux send-keys -l with proper escaping and delay.
-              // Direct ptyProcess.write() bypasses tmux input handling and
-              // doesn't give Claude Code the 100ms gap it needs between text
-              // and Enter to process the input.
-              try {
-                const escaped = parsed.message.replace(/'/g, "'\\''")
-                execSync(`tmux send-keys -t "${sessionName}" -l '${escaped}'`, { timeout: 3000 })
-                // 100ms delay so Claude Code processes the literal text before Enter
-                await new Promise(r => setTimeout(r, 100))
-                execSync(`tmux send-keys -t "${sessionName}" Enter`, { timeout: 3000 })
+              const result = await sendChatMessage(sessionName, parsed.message)
+              if (result.ok) {
                 if (ws.readyState === 1) {
                   ws.send(JSON.stringify({ type: 'chat:sent' }))
                 }
-                // Burst-read JSONL to catch user message echo and early response
                 for (const delay of [500, 1500, 3000, 5000, 8000, 12000]) {
                   setTimeout(() => broadcastJsonlUpdates(sessionName, sessionState), delay)
                 }
-              } catch (err) {
+              } else {
                 if (ws.readyState === 1) {
-                  ws.send(JSON.stringify({ type: 'chat:error', error: 'Failed to send: ' + err.message }))
+                  ws.send(JSON.stringify({ type: 'chat:error', error: result.error }))
                 }
               }
             }
@@ -2007,20 +2095,17 @@ async function startServer(handleRequest) {
 
           if (parsed.type === 'chat:send') {
             if (parsed.message) {
-              try {
-                const escaped = parsed.message.replace(/'/g, "'\\''")
-                execSync(`tmux send-keys -t "${sessionName}" -l '${escaped}'`, { timeout: 3000 })
-                await new Promise(r => setTimeout(r, 100))
-                execSync(`tmux send-keys -t "${sessionName}" Enter`, { timeout: 3000 })
+              const result = await sendChatMessage(sessionName, parsed.message)
+              if (result.ok) {
                 if (ws.readyState === 1) {
                   ws.send(JSON.stringify({ type: 'chat:sent' }))
                 }
                 for (const delay of [500, 1500, 3000, 5000, 8000, 12000]) {
                   setTimeout(() => broadcastJsonlUpdates(sessionName, sessionState), delay)
                 }
-              } catch (err) {
+              } else {
                 if (ws.readyState === 1) {
-                  ws.send(JSON.stringify({ type: 'chat:error', error: 'Failed to send: ' + err.message }))
+                  ws.send(JSON.stringify({ type: 'chat:error', error: result.error }))
                 }
               }
             }
